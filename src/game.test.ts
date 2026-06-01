@@ -47,6 +47,14 @@ describe('connect four game logic', () => {
     expect(blockedMove.state.currentPlayer).toBe(state.currentPlayer)
   })
 
+  it('rejects invalid columns without changing the state', () => {
+    const state = createGameState()
+    const result = dropDisc(state, -1)
+
+    expect(result.error).toBe('invalid-column')
+    expect(result.state).toBe(state)
+  })
+
   it('detects a vertical win', () => {
     let state = createGameState()
 
@@ -55,6 +63,19 @@ describe('connect four game logic', () => {
     }
 
     expect(state.status).toMatchObject({ kind: 'won', winner: 'red' })
+  })
+
+  it('rejects moves after the game has ended', () => {
+    let state = createGameState()
+
+    for (const column of [0, 1, 0, 1, 0, 1, 0]) {
+      state = dropDisc(state, column).state
+    }
+
+    const result = dropDisc(state, 2)
+
+    expect(result.error).toBe('game-over')
+    expect(result.state).toBe(state)
   })
 
   it('detects a horizontal win', () => {
@@ -99,5 +120,14 @@ describe('connect four game logic', () => {
     expect(afterUndo.board.flat().every((cell) => cell === null)).toBe(true)
     expect(afterUndo.currentPlayer).toBe('red')
     expect(afterSecondUndo).toBe(afterUndo)
+  })
+
+  it('does not mutate the previous board when a disc is dropped', () => {
+    const state = createGameState()
+    const result = dropDisc(state, 2)
+
+    expect(result.error).toBeNull()
+    expect(state.board.flat().every((cell) => cell === null)).toBe(true)
+    expect(result.state.board[5][2]).toBe('red')
   })
 })

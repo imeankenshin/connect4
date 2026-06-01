@@ -2,37 +2,20 @@ import { render } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import "./style.css";
 import {
-  COLUMNS,
-  ROWS,
   createGameState,
   dropDisc,
-  isColumnFull,
   undoLastMove,
   type GameState,
   type MoveError,
-  type Player,
-  type Position,
 } from "./game";
+import {
+  createGameView,
+  type BoardColumnView,
+  type CellView,
+} from "./game-view";
+import clsx from "clsx";
 
-type Score = Record<Player | "draw", number>;
-
-type BoardColumnModel = {
-  column: number;
-  className: string;
-  label: string;
-  full: boolean;
-  disabled: boolean;
-};
-
-type CellModel = {
-  row: number;
-  className: string;
-};
-
-const playerLabels: Record<Player, string> = {
-  red: "赤",
-  yellow: "黄",
-};
+type Score = Record<"red" | "yellow" | "draw", number>;
 
 const moveErrorMessages: Record<MoveError, string> = {
   "column-full": "この列は満杯です。別の列を選んでください。",
@@ -47,33 +30,9 @@ function App() {
   const [notice, setNotice] = useState("");
   const [previewColumn, setPreviewColumn] = useState<number | null>(null);
   const noticeTimer = useRef<number | undefined>(undefined);
-  const preview = useMemo<Position | null>(() => {
-    if (previewColumn === null || game.status.kind !== "playing") {
-      return null;
-    }
-
-    for (let row = ROWS - 1; row >= 0; row -= 1) {
-      if (game.board[row][previewColumn] === null) {
-        return { row, column: previewColumn };
-      }
-    }
-
-    return null;
-  }, [game, previewColumn]);
-  const statusText = useMemo(() => {
-    if (game.status.kind === "won") {
-      return `${playerLabels[game.status.winner]}の勝ちです！`;
-    }
-
-    if (game.status.kind === "draw") {
-      return "引き分けです。";
-    }
-
-    return `${playerLabels[game.currentPlayer]}の手番です。`;
-  }, [game]);
-  const canUndoMove = useMemo(
-    () => game.status.kind === "playing" && game.lastMove !== null,
-    [game],
+  const gameView = useMemo(
+    () => createGameView(game, previewColumn),
+    [game, previewColumn],
   );
 
   useEffect(() => clearNoticeTimer, []);
@@ -166,14 +125,13 @@ function App() {
             同じ画面で交互に石を落として、先に4つ並べたプレイヤーの勝ちです。
           </p>
         </div>
-        <StatusCard statusText={statusText} />
+        <StatusCard statusText={gameView.statusText} />
       </section>
 
       <section class="game-layout" aria-label="コネクトフォー対戦エリア">
         <div class="board-panel">
           <Board
-            game={game}
-            preview={preview}
+            columns={gameView.columns}
             onColumnClick={handleColumnClick}
             onPreview={showPreview}
             onPreviewClear={() => setPreviewColumn(null)}
@@ -186,7 +144,7 @@ function App() {
         <aside class="side-panel" aria-label="スコアと操作">
           <ScoreCard score={score} />
           <Controls
-            canUndo={canUndoMove}
+            canUndo={gameView.canUndo}
             onUndo={handleUndo}
             onNewGame={handleNewGame}
             onResetScore={handleResetScore}
@@ -211,54 +169,23 @@ function StatusCard({ statusText }: StatusCardProps) {
 }
 
 type BoardProps = {
-  game: GameState;
-  preview: Position | null;
+  columns: BoardColumnView[];
   onColumnClick: (column: number) => void;
   onPreview: (column: number) => void;
   onPreviewClear: () => void;
 };
 
 function Board({
-  game,
-  preview,
+  columns,
   onColumnClick,
   onPreview,
   onPreviewClear,
 }: BoardProps) {
-  const columns = useMemo<BoardColumnModel[]>(() => {
-    return Array.from({ length: COLUMNS }, (_, column) => {
-      const full = isColumnFull(game.board, column);
-      const disabled = game.status.kind !== "playing";
-      const columnNumber = column + 1;
-      const summary = Array.from({ length: ROWS }, (_, row) => {
-        const cell = game.board[row][column];
-        return cell === null ? "空" : playerLabels[cell];
-      }).join("、");
-      let label = `${columnNumber}列目。上から ${summary}`;
-
-      if (game.status.kind === "playing") {
-        label = full
-          ? `${columnNumber}列目は満杯です。上から ${summary}`
-          : `${columnNumber}列目に${playerLabels[game.currentPlayer]}を置く。上から ${summary}`;
-      }
-
-      return {
-        column,
-        className: full ? "board-column board-column--full" : "board-column",
-        label,
-        full,
-        disabled,
-      };
-    });
-  }, [game]);
-
   return (
     <div class="board" role="group" aria-label="7列6行の盤面">
       {columns.map((columnModel) => (
         <BoardColumn
           key={columnModel.column}
-          game={game}
-          preview={preview}
           columnModel={columnModel}
           onColumnClick={onColumnClick}
           onPreview={onPreview}
@@ -270,60 +197,23 @@ function Board({
 }
 
 type BoardColumnProps = {
-  game: GameState;
-  preview: Position | null;
-  columnModel: BoardColumnModel;
+  columnModel: BoardColumnView;
   onColumnClick: (column: number) => void;
   onPreview: (column: number) => void;
   onPreviewClear: () => void;
 };
 
 function BoardColumn({
-  game,
-  preview,
   columnModel,
   onColumnClick,
   onPreview,
   onPreviewClear,
 }: BoardColumnProps) {
-  const cells = useMemo<CellModel[]>(() => {
-    return Array.from({ length: ROWS }, (_, row) => {
-      const cell = game.board[row][columnModel.column];
-      const classNames = ["cell", cell === null ? "cell--empty" : `cell--${cell}`];
-
-      if (
-        game.lastMove !== null &&
-        game.lastMove.row === row &&
-        game.lastMove.column === columnModel.column
-      ) {
-        classNames.push("cell--dropped");
-      }
-
-      if (
-        game.status.kind === "won" &&
-        game.status.winningCells.some(
-          (winningCell) =>
-            winningCell.row === row && winningCell.column === columnModel.column,
-        )
-      ) {
-        classNames.push("cell--winning");
-      }
-
-      if (
-        preview !== null &&
-        preview.row === row &&
-        preview.column === columnModel.column
-      ) {
-        classNames.push(`cell--preview-${game.currentPlayer}`);
-      }
-
-      return { row, className: classNames.join(" ") };
-    });
-  }, [columnModel.column, game, preview]);
-
   return (
     <button
-      class={columnModel.className}
+      class={
+        columnModel.full ? "board-column board-column--full" : "board-column"
+      }
       type="button"
       data-column={columnModel.column}
       aria-label={columnModel.label}
@@ -335,10 +225,17 @@ function BoardColumn({
       onFocus={() => onPreview(columnModel.column)}
       onBlur={onPreviewClear}
     >
-      {cells.map((cell) => (
+      {columnModel.cells.map((cell) => (
         <span
           key={cell.row}
-          class={cell.className}
+          class={clsx(
+            "cell",
+            cell.state === "empty" ? "cell--empty" : `cell--${cell.state}`,
+            cell.isLastMove && "cell--dropped",
+            cell.isWinning && "cless--winning",
+            cell.previewPlayer !== null &&
+              `cell--preview-${cell.previewPlayer}`,
+          )}
           data-row={cell.row}
           data-column={columnModel.column}
           aria-hidden="true"
@@ -385,12 +282,7 @@ type ControlsProps = {
   onResetScore: () => void;
 };
 
-function Controls({
-  canUndo,
-  onUndo,
-  onNewGame,
-  onResetScore,
-}: ControlsProps) {
+function Controls({ canUndo, onUndo, onNewGame, onResetScore }: ControlsProps) {
   return (
     <div class="controls">
       <button
