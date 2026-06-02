@@ -8,11 +8,7 @@ import {
   type GameState,
   type MoveError,
 } from "./game";
-import {
-  createGameView,
-  type BoardColumnView,
-  type CellView,
-} from "./game-view";
+import { createGameView, type BoardColumnView } from "./game-view";
 import clsx from "clsx";
 
 type Score = Record<"red" | "yellow" | "draw", number>;
@@ -232,7 +228,7 @@ function BoardColumn({
             "cell",
             cell.state === "empty" ? "cell--empty" : `cell--${cell.state}`,
             cell.isLastMove && "cell--dropped",
-            cell.isWinning && "cless--winning",
+            cell.isWinning && "cell--winning",
             cell.previewPlayer !== null &&
               `cell--preview-${cell.previewPlayer}`,
           )}
