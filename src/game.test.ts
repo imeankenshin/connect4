@@ -50,9 +50,12 @@ describe('connect four game logic', () => {
   it('rejects invalid columns without changing the state', () => {
     const state = createGameState()
     const result = dropDisc(state, -1)
+    const upperBoundResult = dropDisc(state, COLUMNS)
 
     expect(result.error).toBe('invalid-column')
     expect(result.state).toBe(state)
+    expect(upperBoundResult.error).toBe('invalid-column')
+    expect(upperBoundResult.state).toBe(state)
   })
 
   it('detects a vertical win', () => {
