@@ -1,4 +1,5 @@
 import './style.css'
+import * as Tone from 'tone'
 import {
   COLUMNS,
   ROWS,
@@ -14,6 +15,10 @@ import {
 } from './game'
 
 type Score = Record<Player | 'draw', number>
+type SoundEffect = 'piece-drop' | 'win' | 'draw' | 'column-full'
+type SoundEffectSynths = ReturnType<typeof createSoundEffectSynths>
+
+const SOUND_EFFECTS_STORAGE_KEY = 'connect-four:sound-effects'
 
 const playerLabels: Record<Player, string> = {
   red: '赤',
@@ -23,7 +28,7 @@ const playerLabels: Record<Player, string> = {
 const moveErrorMessages: Record<MoveError, string> = {
   'column-full': 'この列は満杯です。別の列を選んでください。',
   'game-over': 'ゲームは終了しています。再戦ボタンで新しいゲームを始めてください。',
-  'invalid-column': 'その列には置けません。',
+  'invalid-column': 'その列にはコマを落とせません。',
 }
 
 const appRoot = document.querySelector<HTMLDivElement>('#app')
@@ -38,6 +43,9 @@ let game: GameState = createGameState()
 let score: Score = { red: 0, yellow: 0, draw: 0 }
 let notice = ''
 let noticeTimer: number | undefined
+let soundEffectsEnabled = loadSoundEffectsEnabled()
+let soundEffectSynths: SoundEffectSynths | null = null
+let soundEffectSynthsReady: Promise<SoundEffectSynths> | null = null
 
 render()
 
@@ -48,7 +56,7 @@ function render(): void {
         <div>
           <p class="eyebrow">Local two-player game</p>
           <h1 id="game-title">Connect Four</h1>
-          <p class="hero-copy">同じ画面で交互に石を落として、先に4つ並べたプレイヤーの勝ちです。</p>
+          <p class="hero-copy">同じ画面で交互にコマを落として、先に4つ並べたプレイヤーの勝ちです。</p>
         </div>
         <div class="status-card" aria-live="polite">
           <span class="status-label">現在の状態</span>
@@ -74,6 +82,7 @@ function render(): void {
             <button class="control-button" id="reset-score-button" type="button">
               スコアをリセット
             </button>
+            ${renderSoundEffectsToggle()}
           </div>
         </aside>
       </section>
@@ -153,6 +162,20 @@ function renderScore(): string {
   `
 }
 
+function renderSoundEffectsToggle(): string {
+  return `
+    <button
+      class="control-button control-button--toggle"
+      id="sound-effects-button"
+      type="button"
+      aria-pressed="${soundEffectsEnabled ? 'true' : 'false'}"
+    >
+      <span>効果音</span>
+      <span class="toggle-state">${soundEffectsEnabled ? 'オン' : 'オフ'}</span>
+    </button>
+  `
+}
+
 function bindEvents(): void {
   app.querySelectorAll<HTMLButtonElement>('.board-column').forEach((button) => {
     const column = Number(button.dataset.column)
@@ -181,12 +204,22 @@ function bindEvents(): void {
     notice = ''
     render()
   })
+
+  app.querySelector<HTMLButtonElement>('#sound-effects-button')?.addEventListener('click', () => {
+    soundEffectsEnabled = !soundEffectsEnabled
+    saveSoundEffectsEnabled(soundEffectsEnabled)
+    render()
+  })
 }
 
 function handleColumnClick(column: number): void {
   const result = dropDisc(game, column)
 
   if (result.error !== null) {
+    if (result.error === 'column-full') {
+      playSoundEffect('column-full')
+    }
+
     showNotice(moveErrorMessages[result.error])
     return
   }
@@ -196,13 +229,103 @@ function handleColumnClick(column: number): void {
 
   if (game.status.kind === 'won') {
     score[game.status.winner] += 1
-  }
-
-  if (game.status.kind === 'draw') {
+    playSoundEffect('win')
+  } else if (game.status.kind === 'draw') {
     score.draw += 1
+    playSoundEffect('draw')
+  } else {
+    playSoundEffect('piece-drop')
   }
 
   render()
+}
+
+function playSoundEffect(effect: SoundEffect): void {
+  if (!soundEffectsEnabled) {
+    return
+  }
+
+  void prepareSoundEffects()
+    .then((synths) => {
+      if (!soundEffectsEnabled) {
+        return
+      }
+
+      triggerSoundEffect(synths, effect)
+    })
+    .catch(() => undefined)
+}
+
+function prepareSoundEffects(): Promise<SoundEffectSynths> {
+  if (soundEffectSynths !== null) {
+    return Promise.resolve(soundEffectSynths)
+  }
+
+  soundEffectSynthsReady ??= Tone.start().then(() => {
+    soundEffectSynths = createSoundEffectSynths()
+    return soundEffectSynths
+  })
+  soundEffectSynthsReady.catch(() => {
+    soundEffectSynthsReady = null
+  })
+
+  return soundEffectSynthsReady
+}
+
+function createSoundEffectSynths() {
+  const moveSynth = new Tone.Synth({
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.005, decay: 0.04, sustain: 0, release: 0.05 },
+  }).toDestination()
+  const accentSynth = new Tone.Synth({
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.006, decay: 0.08, sustain: 0, release: 0.12 },
+  }).toDestination()
+
+  moveSynth.volume.value = -18
+  accentSynth.volume.value = -16
+
+  return { moveSynth, accentSynth }
+}
+
+function triggerSoundEffect(synths: SoundEffectSynths, effect: SoundEffect): void {
+  const now = Tone.now()
+
+  if (effect === 'piece-drop') {
+    synths.moveSynth.triggerAttackRelease('C4', 0.08, now)
+    return
+  }
+
+  if (effect === 'column-full') {
+    synths.moveSynth.triggerAttackRelease('C3', 0.12, now)
+    return
+  }
+
+  if (effect === 'draw') {
+    synths.accentSynth.triggerAttackRelease('E4', 0.1, now)
+    synths.accentSynth.triggerAttackRelease('C4', 0.16, now + 0.14)
+    return
+  }
+
+  synths.accentSynth.triggerAttackRelease('C5', 0.1, now)
+  synths.accentSynth.triggerAttackRelease('E5', 0.1, now + 0.13)
+  synths.accentSynth.triggerAttackRelease('G5', 0.22, now + 0.28)
+}
+
+function loadSoundEffectsEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(SOUND_EFFECTS_STORAGE_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+function saveSoundEffectsEnabled(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(SOUND_EFFECTS_STORAGE_KEY, enabled ? 'on' : 'off')
+  } catch {
+    // 効果音の設定保存に失敗しても、ゲーム進行は止めない。
+  }
 }
 
 function showPreview(column: number): void {
@@ -272,7 +395,7 @@ function getColumnLabel(column: number): string {
     return `${columnNumber}列目は満杯です。${summary}`
   }
 
-  return `${columnNumber}列目に${playerLabels[game.currentPlayer]}を置く。${summary}`
+  return `${columnNumber}列目に${playerLabels[game.currentPlayer]}のコマを落とす。${summary}`
 }
 
 function getColumnSummary(column: number): string {
