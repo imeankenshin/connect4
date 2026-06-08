@@ -1,7 +1,7 @@
 import { render } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import * as Tone from "tone";
 import "./style.css";
+import { createBrowserSoundEffects } from "./browser-sound-effects";
 import {
   createGameState,
   dropDisc,
@@ -10,13 +10,10 @@ import {
   type MoveError,
 } from "./game";
 import { createGameView, type BoardColumnView } from "./game-view";
+import type { SoundEffect } from "./sound-effects";
 import clsx from "clsx";
 
 type Score = Record<"red" | "yellow" | "draw", number>;
-type SoundEffect = "piece-drop" | "win" | "draw" | "column-full";
-type SoundEffectSynths = ReturnType<typeof createSoundEffectSynths>;
-
-const SOUND_EFFECTS_STORAGE_KEY = "connect-four:sound-effects";
 
 const moveErrorMessages: Record<MoveError, string> = {
   "column-full": "この列は満杯です。別の列を選んでください。",
@@ -26,29 +23,21 @@ const moveErrorMessages: Record<MoveError, string> = {
 };
 
 function App() {
+  const [soundEffects] = useState(() => createBrowserSoundEffects());
   const [game, setGame] = useState<GameState>(() => createGameState());
   const [score, setScore] = useState<Score>({ red: 0, yellow: 0, draw: 0 });
   const [notice, setNotice] = useState("");
   const [previewColumn, setPreviewColumn] = useState<number | null>(null);
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(() =>
-    loadSoundEffectsEnabled(),
+    soundEffects.isEnabled(),
   );
   const noticeTimer = useRef<number | undefined>(undefined);
-  const soundEffectsEnabledRef = useRef(soundEffectsEnabled);
-  const soundEffectSynths = useRef<SoundEffectSynths | null>(null);
-  const soundEffectSynthsReady = useRef<Promise<SoundEffectSynths> | null>(
-    null,
-  );
   const gameView = useMemo(
     () => createGameView(game, previewColumn),
     [game, previewColumn],
   );
 
   useEffect(() => clearNoticeTimer, []);
-
-  useEffect(() => {
-    soundEffectsEnabledRef.current = soundEffectsEnabled;
-  }, [soundEffectsEnabled]);
 
   function clearNoticeTimer(): void {
     if (noticeTimer.current !== undefined) {
@@ -139,44 +128,11 @@ function App() {
   }
 
   function handleToggleSoundEffects(): void {
-    setSoundEffectsEnabled((enabled) => {
-      const nextEnabled = !enabled;
-      soundEffectsEnabledRef.current = nextEnabled;
-      saveSoundEffectsEnabled(nextEnabled);
-      return nextEnabled;
-    });
+    setSoundEffectsEnabled(soundEffects.toggle());
   }
 
   function playSoundEffect(effect: SoundEffect): void {
-    if (!soundEffectsEnabledRef.current) {
-      return;
-    }
-
-    void prepareSoundEffects()
-      .then((synths) => {
-        if (!soundEffectsEnabledRef.current) {
-          return;
-        }
-
-        triggerSoundEffect(synths, effect);
-      })
-      .catch(() => undefined);
-  }
-
-  function prepareSoundEffects(): Promise<SoundEffectSynths> {
-    if (soundEffectSynths.current !== null) {
-      return Promise.resolve(soundEffectSynths.current);
-    }
-
-    soundEffectSynthsReady.current ??= Tone.start().then(() => {
-      soundEffectSynths.current = createSoundEffectSynths();
-      return soundEffectSynths.current;
-    });
-    soundEffectSynthsReady.current.catch(() => {
-      soundEffectSynthsReady.current = null;
-    });
-
-    return soundEffectSynthsReady.current;
+    soundEffects.play(effect);
   }
 
   return (
@@ -391,68 +347,6 @@ function Controls({
       </button>
     </div>
   );
-}
-
-function createSoundEffectSynths() {
-  const moveSynth = new Tone.Synth({
-    oscillator: { type: "triangle" },
-    envelope: { attack: 0.005, decay: 0.04, sustain: 0, release: 0.05 },
-  }).toDestination();
-  const accentSynth = new Tone.Synth({
-    oscillator: { type: "sine" },
-    envelope: { attack: 0.006, decay: 0.08, sustain: 0, release: 0.12 },
-  }).toDestination();
-
-  moveSynth.volume.value = -18;
-  accentSynth.volume.value = -16;
-
-  return { moveSynth, accentSynth };
-}
-
-function triggerSoundEffect(
-  synths: SoundEffectSynths,
-  effect: SoundEffect,
-): void {
-  const now = Tone.now();
-
-  if (effect === "piece-drop") {
-    synths.moveSynth.triggerAttackRelease("C4", 0.08, now);
-    return;
-  }
-
-  if (effect === "column-full") {
-    synths.moveSynth.triggerAttackRelease("C3", 0.12, now);
-    return;
-  }
-
-  if (effect === "draw") {
-    synths.accentSynth.triggerAttackRelease("E4", 0.1, now);
-    synths.accentSynth.triggerAttackRelease("C4", 0.16, now + 0.14);
-    return;
-  }
-
-  synths.accentSynth.triggerAttackRelease("C5", 0.1, now);
-  synths.accentSynth.triggerAttackRelease("E5", 0.1, now + 0.13);
-  synths.accentSynth.triggerAttackRelease("G5", 0.22, now + 0.28);
-}
-
-function loadSoundEffectsEnabled(): boolean {
-  try {
-    return window.localStorage.getItem(SOUND_EFFECTS_STORAGE_KEY) !== "off";
-  } catch {
-    return true;
-  }
-}
-
-function saveSoundEffectsEnabled(enabled: boolean): void {
-  try {
-    window.localStorage.setItem(
-      SOUND_EFFECTS_STORAGE_KEY,
-      enabled ? "on" : "off",
-    );
-  } catch {
-    // 効果音の設定保存に失敗しても、ゲーム進行は止めない。
-  }
 }
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
