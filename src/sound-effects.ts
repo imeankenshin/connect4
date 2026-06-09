@@ -51,7 +51,11 @@ export function createSoundEffects({
         return;
       }
 
-      await adapter.play(effect, () => enabled);
+      try {
+        await adapter.play(effect, () => enabled);
+      } catch {
+        // 効果音の再生失敗でゲーム進行は止めない。
+      }
     },
   };
 }

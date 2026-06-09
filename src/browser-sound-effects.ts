@@ -10,6 +10,9 @@ import * as Result from "./utils/result";
 
 type SoundEffectSynths = ReturnType<typeof createSoundEffectSynths>;
 
+let synths: SoundEffectSynths | null = null;
+let initPromise: Result.ResultAsync<SoundEffectSynths, Error> | null = null;
+
 export function createBrowserSoundEffects(): SoundEffects {
   return createSoundEffects({
     adapter: createToneSoundEffectAdapter(),
@@ -18,8 +21,6 @@ export function createBrowserSoundEffects(): SoundEffects {
 }
 
 function createToneSoundEffectAdapter(): SoundEffectAdapter {
-  let synths: SoundEffectSynths | null = null;
-
   const prepareSoundEffects = async (): Result.ResultAsync<
     SoundEffectSynths,
     Error
@@ -28,10 +29,22 @@ function createToneSoundEffectAdapter(): SoundEffectAdapter {
       return Result.ok(synths);
     }
 
-    const [, error] = await Result.fromPromise(Tone.start(), () => new Error());
-    if (error) return Result.err(error);
-    synths = createSoundEffectSynths();
-    return Result.ok(synths);
+    if (initPromise !== null) {
+      return initPromise;
+    }
+
+    initPromise = (async () => {
+      const [, error] = await Result.fromPromise(Tone.start(), () => new Error());
+      if (error) return Result.err(error);
+      synths = createSoundEffectSynths();
+      return Result.ok(synths);
+    })();
+
+    try {
+      return await initPromise;
+    } finally {
+      initPromise = null;
+    }
   };
 
   return {

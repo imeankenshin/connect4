@@ -78,8 +78,7 @@ describe('sound effects', () => {
       storage: null,
     })
 
-    soundEffects.play('win')
-    await Promise.resolve()
+    await expect(soundEffects.play('win')).resolves.toBeUndefined()
   })
 })
 

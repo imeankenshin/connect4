@@ -18,6 +18,9 @@
   "dependencies": {
     "clsx": "^2.1.1",
     "preact": "^10.29.2",
+    "react": "npm:@preact/compat",
+    "react-dom": "npm:@preact/compat",
+    "react-use": "^17.6.0",
     "tone": "^15.1.22"
   }
 }
