@@ -329,6 +329,21 @@ h1 {
   color: #ffffff;
 }
 
+.control-button--toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toggle-state {
+  color: #2456db;
+}
+
+.control-button--toggle[aria-pressed='false'] .toggle-state {
+  color: #67748a;
+}
+
 @keyframes drop-in {
   0% {
     opacity: 0.45;

@@ -1,6 +1,7 @@
 import { render } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import "./style.css";
+import { createBrowserSoundEffects } from "./browser-sound-effects";
 import {
   createGameState,
   dropDisc,
@@ -9,6 +10,7 @@ import {
   type MoveError,
 } from "./game";
 import { createGameView, type BoardColumnView } from "./game-view";
+import type { SoundEffect } from "./sound-effects";
 import clsx from "clsx";
 
 type Score = Record<"red" | "yellow" | "draw", number>;
@@ -17,14 +19,18 @@ const moveErrorMessages: Record<MoveError, string> = {
   "column-full": "この列は満杯です。別の列を選んでください。",
   "game-over":
     "ゲームは終了しています。再戦ボタンで新しいゲームを始めてください。",
-  "invalid-column": "その列には置けません。",
+  "invalid-column": "その列にはコマを落とせません。",
 };
 
 function App() {
+  const [soundEffects] = useState(() => createBrowserSoundEffects());
   const [game, setGame] = useState<GameState>(() => createGameState());
   const [score, setScore] = useState<Score>({ red: 0, yellow: 0, draw: 0 });
   const [notice, setNotice] = useState("");
   const [previewColumn, setPreviewColumn] = useState<number | null>(null);
+  const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(() =>
+    soundEffects.isEnabled(),
+  );
   const noticeTimer = useRef<number | undefined>(undefined);
   const gameView = useMemo(
     () => createGameView(game, previewColumn),
@@ -49,6 +55,10 @@ function App() {
     const result = dropDisc(game, column);
 
     if (result.error !== null) {
+      if (result.error === "column-full") {
+        playSoundEffect("column-full");
+      }
+
       showNotice(moveErrorMessages[result.error]);
       return;
     }
@@ -64,6 +74,7 @@ function App() {
         ...currentScore,
         [winner]: currentScore[winner] + 1,
       }));
+      playSoundEffect("win");
     }
 
     if (nextGame.status.kind === "draw") {
@@ -71,6 +82,11 @@ function App() {
         ...currentScore,
         draw: currentScore.draw + 1,
       }));
+      playSoundEffect("draw");
+    }
+
+    if (nextGame.status.kind === "playing") {
+      playSoundEffect("piece-drop");
     }
   }
 
@@ -111,6 +127,14 @@ function App() {
     clearNotice();
   }
 
+  function handleToggleSoundEffects(): void {
+    setSoundEffectsEnabled(soundEffects.toggle());
+  }
+
+  function playSoundEffect(effect: SoundEffect): void {
+    soundEffects.play(effect);
+  }
+
   return (
     <main class="app-shell">
       <section class="hero" aria-labelledby="game-title">
@@ -118,7 +142,7 @@ function App() {
           <p class="eyebrow">Local two-player game</p>
           <h1 id="game-title">Connect Four</h1>
           <p class="hero-copy">
-            同じ画面で交互に石を落として、先に4つ並べたプレイヤーの勝ちです。
+            同じ画面で交互にコマを落として、先に4つ並べたプレイヤーの勝ちです。
           </p>
         </div>
         <StatusCard statusText={gameView.statusText} />
@@ -144,6 +168,8 @@ function App() {
             onUndo={handleUndo}
             onNewGame={handleNewGame}
             onResetScore={handleResetScore}
+            soundEffectsEnabled={soundEffectsEnabled}
+            onToggleSoundEffects={handleToggleSoundEffects}
           />
         </aside>
       </section>
@@ -276,9 +302,18 @@ type ControlsProps = {
   onUndo: () => void;
   onNewGame: () => void;
   onResetScore: () => void;
+  soundEffectsEnabled: boolean;
+  onToggleSoundEffects: () => void;
 };
 
-function Controls({ canUndo, onUndo, onNewGame, onResetScore }: ControlsProps) {
+function Controls({
+  canUndo,
+  onUndo,
+  onNewGame,
+  onResetScore,
+  soundEffectsEnabled,
+  onToggleSoundEffects,
+}: ControlsProps) {
   return (
     <div class="controls">
       <button
@@ -298,6 +333,17 @@ function Controls({ canUndo, onUndo, onNewGame, onResetScore }: ControlsProps) {
       </button>
       <button class="control-button" type="button" onClick={onResetScore}>
         スコアをリセット
+      </button>
+      <button
+        class="control-button control-button--toggle"
+        type="button"
+        aria-pressed={soundEffectsEnabled ? "true" : "false"}
+        onClick={onToggleSoundEffects}
+      >
+        <span>効果音</span>
+        <span class="toggle-state">
+          {soundEffectsEnabled ? "オン" : "オフ"}
+        </span>
       </button>
     </div>
   );

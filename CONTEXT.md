@@ -1,46 +1,63 @@
-# Connect Four Context
+# Connect Four
 
-This context describes the language for the local two-player Connect Four game.
+ローカル環境のブラウザで遊ぶ、2人対戦用のコネクトフォーです。
 
 ## Language
 
-**Connect Four**:
-A local two-player game where players alternate dropping discs into a board and win by connecting four discs.
+**盤面**:
+7列6行で、コマが入るプレイエリア。
+_Avoid_: Board
 
-**Board**:
-The 7-column by 6-row play area that holds discs.
+**列**:
+プレイヤーがコマを落とす縦方向のレーン。
+_Avoid_: Column
 
-**Column**:
-A vertical lane in the Board where a player can drop a disc.
+**コマ**:
+プレイヤーが盤面に落とす赤または黄の円形のゲーム要素。
+_Avoid_: 石, ディスク, セル
 
-**Disc**:
-A red or yellow piece occupying one Board cell.
+**手番**:
+現在のプレイヤーが列を選び、コマを落とす機会。
+_Avoid_: Turn
 
-**Turn**:
-The current player's opportunity to choose a Column and drop a Disc.
+**プレビュー**:
+手番を確定する前に、現在のプレイヤーのコマが着地する位置を示す表示。
+_Avoid_: Preview
 
-**Preview**:
-The visible landing position for the current player's Disc before the Turn is committed.
+**勝利ライン**:
+ゲーム終了時に4つ接続したコマの位置。
+_Avoid_: Winning line
 
-**Winning line**:
-The four connected Disc positions that end the game.
+**スコア**:
+複数ゲームにまたがる赤の勝利数、黄の勝利数、引き分け数。
+_Avoid_: Score
 
-**Score**:
-The running count of red wins, yellow wins, and draws across games.
+**効果音**:
+ゲーム内の出来事に対する短い音声フィードバック。
+_Avoid_: BGM, 音声案内
+
+**コマを落とす**:
+プレイヤーが列を選び、コマがその列の空いている最下段に配置されること。
+_Avoid_: セルの配置, 石を落とす
 
 ## Relationships
 
-- A **Board** has seven **Columns**.
-- A **Column** holds zero to six **Discs**.
-- A **Turn** drops one **Disc** into one **Column**.
-- A **Winning line** belongs to the completed **Board** state.
-- A **Score** is updated after a win or draw.
+- **盤面**には7つの**列**がある
+- **列**には0から6個の**コマ**が入る
+- **手番**では1つの**コマ**を1つの**列**に落とす
+- **プレビュー**は**コマを落とす**前の着地位置を示す
+- **勝利ライン**は終了した**盤面**の状態に属する
+- **スコア**は勝利または引き分けのあとに更新される
+- **効果音**はゲーム内の出来事に対応する
+- **コマを落とす**と、盤面に**コマ**が1つ増える
 
-## Example dialogue
+## Example Dialogue
 
-> **Dev:** "When the player hovers a **Column**, should the **Preview** use the same rule as dropping a **Disc**?"
-> **Domain expert:** "Yes. The **Preview** shows where the **Disc** would land if that **Turn** were committed."
+> **Dev:** 「**コマを落とす**ときにも**効果音**を鳴らしますか？」
+> **Domain expert:** 「はい、プレイヤーの操作が成功したことが分かる短い音にします。」
+> **Dev:** 「プレイヤーが**列**にカーソルを合わせたとき、**プレビュー**は**コマを落とす**ときと同じ位置を示しますか？」
+> **Domain expert:** 「はい。手番を確定した場合に**コマ**が着地する位置を示します。」
 
-## Flagged ambiguities
+## Flagged Ambiguities
 
-- None yet.
+- None.
