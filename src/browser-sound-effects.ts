@@ -1,4 +1,3 @@
-import * as Tone from "tone";
 import {
   createSoundEffects,
   type SoundEffect,
@@ -6,101 +5,168 @@ import {
   type SoundEffects,
   type SoundEffectsStorage,
 } from "./sound-effects";
-import * as Result from "./utils/result";
 
-type SoundEffectSynths = ReturnType<typeof createSoundEffectSynths>;
+type SoundEffectNote = {
+  frequency: number;
+  duration: number;
+  delay: number;
+  gain: number;
+  type: OscillatorType;
+};
 
-let synths: SoundEffectSynths | null = null;
-let initPromise: Result.ResultAsync<SoundEffectSynths, Error> | null = null;
+const NOTE = {
+  c3: 130.81,
+  c4: 261.63,
+  e4: 329.63,
+  c5: 523.25,
+  e5: 659.25,
+  g5: 783.99,
+} as const;
+
+const MOVE_GAIN = 0.1;
+const ACCENT_GAIN = 0.12;
+const MIN_GAIN = 0.001;
+const ATTACK = 0.006;
+
+let audioContext: AudioContext | null = null;
 
 export function createBrowserSoundEffects(): SoundEffects {
   return createSoundEffects({
-    adapter: createToneSoundEffectAdapter(),
+    adapter: createWebAudioSoundEffectAdapter(),
     storage: getBrowserStorage(),
   });
 }
 
-function createToneSoundEffectAdapter(): SoundEffectAdapter {
-  const prepareSoundEffects = async (): Result.ResultAsync<
-    SoundEffectSynths,
-    Error
-  > => {
-    if (synths !== null) {
-      return Result.ok(synths);
-    }
-
-    if (initPromise !== null) {
-      return initPromise;
-    }
-
-    initPromise = (async () => {
-      const [, error] = await Result.fromPromise(Tone.start(), () => new Error());
-      if (error) return Result.err(error);
-      synths = createSoundEffectSynths();
-      return Result.ok(synths);
-    })();
-
-    try {
-      return await initPromise;
-    } finally {
-      initPromise = null;
-    }
-  };
-
+function createWebAudioSoundEffectAdapter(): SoundEffectAdapter {
   return {
     async play(effect, shouldPlay) {
       if (!shouldPlay()) {
         return;
       }
 
-      const [nextSynths, error] = await prepareSoundEffects();
-      if (error) return;
-      triggerSoundEffect(nextSynths, effect);
+      const nextAudioContext = await getAudioContext();
+      if (nextAudioContext === null || !shouldPlay()) {
+        return;
+      }
+
+      triggerSoundEffect(nextAudioContext, effect);
     },
   };
 }
 
-function createSoundEffectSynths() {
-  const moveSynth = new Tone.Synth({
-    oscillator: { type: "triangle" },
-    envelope: { attack: 0.005, decay: 0.04, sustain: 0, release: 0.05 },
-  }).toDestination();
-  const accentSynth = new Tone.Synth({
-    oscillator: { type: "sine" },
-    envelope: { attack: 0.006, decay: 0.08, sustain: 0, release: 0.12 },
-  }).toDestination();
+async function getAudioContext(): Promise<AudioContext | null> {
+  if (audioContext === null) {
+    if (
+      typeof window === "undefined" ||
+      typeof window.AudioContext !== "function"
+    ) {
+      return null;
+    }
 
-  moveSynth.volume.value = -18;
-  accentSynth.volume.value = -16;
+    audioContext = new window.AudioContext();
+  }
 
-  return { moveSynth, accentSynth };
+  if (audioContext.state === "suspended") {
+    await audioContext.resume();
+  }
+
+  return audioContext;
 }
 
 function triggerSoundEffect(
-  synths: SoundEffectSynths,
+  audioContext: AudioContext,
   effect: SoundEffect,
 ): void {
-  const now = Tone.now();
+  const now = audioContext.currentTime;
 
   if (effect === "piece-drop") {
-    synths.moveSynth.triggerAttackRelease("C4", 0.08, now);
+    playSoundEffectNotes(
+      audioContext,
+      [createNote("triangle", NOTE.c4, 0.08, 0, MOVE_GAIN)],
+      now,
+    );
     return;
   }
 
   if (effect === "column-full") {
-    synths.moveSynth.triggerAttackRelease("C3", 0.12, now);
+    playSoundEffectNotes(
+      audioContext,
+      [createNote("triangle", NOTE.c3, 0.12, 0, MOVE_GAIN)],
+      now,
+    );
     return;
   }
 
   if (effect === "draw") {
-    synths.accentSynth.triggerAttackRelease("E4", 0.1, now);
-    synths.accentSynth.triggerAttackRelease("C4", 0.16, now + 0.14);
+    playSoundEffectNotes(
+      audioContext,
+      [
+        createNote("sine", NOTE.e4, 0.1, 0, ACCENT_GAIN),
+        createNote("sine", NOTE.c4, 0.16, 0.14, ACCENT_GAIN),
+      ],
+      now,
+    );
     return;
   }
 
-  synths.accentSynth.triggerAttackRelease("C5", 0.1, now);
-  synths.accentSynth.triggerAttackRelease("E5", 0.1, now + 0.13);
-  synths.accentSynth.triggerAttackRelease("G5", 0.22, now + 0.28);
+  playSoundEffectNotes(
+    audioContext,
+    [
+      createNote("sine", NOTE.c5, 0.1, 0, ACCENT_GAIN),
+      createNote("sine", NOTE.e5, 0.1, 0.13, ACCENT_GAIN),
+      createNote("sine", NOTE.g5, 0.22, 0.28, ACCENT_GAIN),
+    ],
+    now,
+  );
+}
+
+function createNote(
+  type: OscillatorType,
+  frequency: number,
+  duration: number,
+  delay: number,
+  gain: number,
+): SoundEffectNote {
+  return { type, frequency, duration, delay, gain };
+}
+
+function playSoundEffectNotes(
+  audioContext: AudioContext,
+  notes: SoundEffectNote[],
+  startTime: number,
+): void {
+  for (const note of notes) {
+    playNote(audioContext, note, startTime + note.delay);
+  }
+}
+
+function playNote(
+  audioContext: AudioContext,
+  note: SoundEffectNote,
+  startTime: number,
+): void {
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const stopTime = startTime + note.duration;
+
+  oscillator.type = note.type;
+  oscillator.frequency.setValueAtTime(note.frequency, startTime);
+  gain.gain.setValueAtTime(MIN_GAIN, startTime);
+  gain.gain.linearRampToValueAtTime(note.gain, startTime + ATTACK);
+  gain.gain.exponentialRampToValueAtTime(MIN_GAIN, stopTime);
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(startTime);
+  oscillator.stop(stopTime + 0.02);
+  oscillator.addEventListener(
+    "ended",
+    () => {
+      oscillator.disconnect();
+      gain.disconnect();
+    },
+    { once: true },
+  );
 }
 
 function getBrowserStorage(): SoundEffectsStorage | null {
